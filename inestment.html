@@ -330,10 +330,11 @@
             scenarios.forEach((scenario, index) => {
                 const scenarioDiv = document.createElement('div');
                 scenarioDiv.className = 'flex items-center justify-between bg-gray-800 p-3 rounded-lg shadow-sm text-sm';
+                const contributionLabel = scenario.monthlyAddon < 0 ? 'Monthly Withdrawal' : 'Monthly Contribution';
                 scenarioDiv.innerHTML = `
                     <p class="text-gray-400">
-                        At age <span class="font-semibold">${scenario.age}</span>, monthly contribution changes to 
-                        <span class="font-semibold">${formatCurrency(scenario.monthlyAddon, scenario.currency)}</span>
+                        At age <span class="font-semibold">${scenario.age}</span>, ${contributionLabel} changes to 
+                        <span class="font-semibold">${formatCurrency(Math.abs(scenario.monthlyAddon), scenario.currency)}</span>
                     </p>
                     <button class="remove-scenario-btn text-red-500 hover:text-red-700 transition-colors text-xs font-semibold" data-index="${index}">Remove</button>
                 `;
@@ -354,6 +355,7 @@
         // Function to calculate and render scenario summaries
         function calculateAndRenderScenarioSummaries(data, baseCurrency) {
             scenarioSummaryResultsContainer.innerHTML = '';
+            if (!data.length) return;
 
             // Loop through the data to find each scenario's summary
             scenarios.forEach((scenario) => {
@@ -361,45 +363,43 @@
                 if (scenarioData) {
                     let accumulated = scenarioData.endingBalance;
                     
-                    // The total contributions need to be calculated based on the scenarios
                     let totalContributions = 0;
                     let currentMonthlyAddon = parseFloat(document.getElementById('monthlyAddon').value);
                     let initialPrincipal = parseFloat(document.getElementById('initialPrincipal').value);
                     let currentAge = parseInt(document.getElementById('currentAge').value);
+                    totalContributions = initialPrincipal;
 
                     let sortedScenarios = scenarios.slice().sort((a, b) => a.age - b.age);
                     let lastAge = currentAge;
                     let lastMonthlyAddon = currentMonthlyAddon;
-                    totalContributions = initialPrincipal;
 
                     for (const s of sortedScenarios) {
                       if (s.age <= scenario.age) {
                         totalContributions += (s.age - lastAge) * 12 * lastMonthlyAddon;
                         lastAge = s.age;
                         lastMonthlyAddon = s.monthlyAddon;
-                        // Handle currency conversion for contributions
                         if (s.currency !== baseCurrency) {
                             lastMonthlyAddon = lastMonthlyAddon / exchangeRates[s.currency] * exchangeRates[baseCurrency];
                         }
                       }
                     }
                     totalContributions += (scenario.age - lastAge) * 12 * lastMonthlyAddon;
-
                     let interestEarned = accumulated - totalContributions;
 
-                    // Convert and format all values to the current display currency before rendering
                     let formattedAccumulated, formattedContributed, formattedInterest;
+                    const conversionRate = exchangeRates[displayCurrency] / exchangeRates[baseCurrency];
+                    
                     if (displayCurrency === 'INR') {
-                        const conversionRate = exchangeRates[displayCurrency] / exchangeRates[baseCurrency];
                         formattedAccumulated = formatCrore(accumulated * conversionRate);
                         formattedContributed = formatCrore(totalContributions * conversionRate);
                         formattedInterest = formatCrore(interestEarned * conversionRate);
                     } else {
-                        const conversionRate = exchangeRates[displayCurrency] / exchangeRates[baseCurrency];
                         formattedAccumulated = formatCurrency(accumulated * conversionRate, displayCurrency);
                         formattedContributed = formatCurrency(totalContributions * conversionRate, displayCurrency);
                         formattedInterest = formatCurrency(interestEarned * conversionRate, displayCurrency);
                     }
+                    
+                    const contributionLabel = scenario.monthlyAddon < 0 ? 'Total Withdrawn:' : 'Contributed:';
 
                     const summaryDiv = document.createElement('div');
                     summaryDiv.className = 'mt-2 p-4 bg-gray-800 rounded-lg text-sm grid grid-cols-2 sm:grid-cols-4 gap-2';
@@ -413,7 +413,7 @@
                             <p class="text-gray-200 font-semibold">${formattedAccumulated}</p>
                         </div>
                         <div>
-                            <p class="font-medium text-gray-400">Contributed:</p>
+                            <p class="font-medium text-gray-400">${contributionLabel}</p>
                             <p class="text-gray-200 font-semibold">${formattedContributed}</p>
                         </div>
                         <div>
@@ -427,22 +427,19 @@
         }
 
 
-        // Main calculation and rendering function
-        calculateBtn.addEventListener('click', async () => {
+        // Function to perform the main calculation
+        async function calculateData() {
             const initialPrincipal = parseFloat(document.getElementById('initialPrincipal').value);
             const currentAge = parseInt(document.getElementById('currentAge').value);
             const interestRate = parseFloat(document.getElementById('interestRate').value) / 100;
             const compoundingFrequency = document.getElementById('compoundingFrequency').value;
             const initialMonthlyAddon = parseFloat(document.getElementById('monthlyAddon').value);
             const initialCurrency = document.getElementById('initialCurrency').value;
-
+            
             // Validation
             if (isNaN(initialPrincipal) || isNaN(currentAge) || isNaN(interestRate) || isNaN(initialMonthlyAddon)) {
-                showMessage("Please fill out all the initial fields with valid numbers.", 'red');
-                return;
+                return null; // Return null on invalid input
             }
-
-            showMessage('Calculating...', 'blue');
 
             // Fetch exchange rates
             try {
@@ -455,7 +452,7 @@
             } catch (error) {
                 showMessage("Failed to fetch exchange rates. Please try again later.", 'red');
                 console.error("Error fetching exchange rates:", error);
-                return;
+                return null;
             }
 
             let principal = initialPrincipal;
@@ -464,15 +461,13 @@
 
             const chartData = [];
             const tableRows = [];
-            calculationData = [];
+            const calculationData = [];
 
-            // Loop through each year until projection age
             for (let year = currentAge; year <= PROJECTION_AGE; year++) {
                 let interestEarnedThisYear = 0;
                 let contributionsThisYear = 0;
                 let yearlyPrincipalStart = principal;
 
-                // Check for scenario changes at the start of the year
                 if (scenarioIndex < scenarios.length && year >= scenarios[scenarioIndex].age) {
                     const scenario = scenarios[scenarioIndex];
                     if (scenario.currency !== initialCurrency) {
@@ -483,7 +478,6 @@
                     scenarioIndex++;
                 }
 
-                // Loop through each month
                 for (let month = 1; month <= 12; month++) {
                     const monthlyRate = interestRate / 12;
                     let interestThisMonth = 0;
@@ -498,14 +492,12 @@
                     contributionsThisYear += currentMonthlyAddon;
                 }
                 
-                // If compounding is annual, apply interest at the end of the year
                 if (compoundingFrequency === 'annually') {
                     const annualInterest = yearlyPrincipalStart * interestRate;
                     principal += annualInterest;
                     interestEarnedThisYear = annualInterest;
                 }
 
-                // Add data for the chart and table
                 chartData.push({
                     x: year,
                     y: principal,
@@ -519,23 +511,30 @@
                     endingBalance: principal,
                 });
 
-                // Save data for later use in summaries
                 calculationData.push({
                     age: year,
                     endingBalance: principal,
-                    totalContributions: principal - interestEarnedThisYear // Simplified for this context
+                    totalContributions: principal - interestEarnedThisYear
                 });
             }
+            return { chartData, tableRows, calculationData, initialCurrency };
+        }
 
-            // Render the results
-            renderChart(chartData, initialCurrency);
-            renderTable(tableRows, initialCurrency);
-            calculateAndRenderScenarioSummaries(tableRows, initialCurrency);
-            resultsDiv.classList.remove('hidden');
-            displayCurrency = initialCurrency; // Set the initial display currency
-            toggleCurrencyBtn.textContent = `View in ${displayCurrency === 'USD' ? 'INR' : 'USD'}`;
-
-            showMessage('Calculation complete!', 'green');
+        // Main calculation and rendering function
+        calculateBtn.addEventListener('click', async () => {
+            showMessage('Calculating...', 'blue');
+            const data = await calculateData();
+            if (data) {
+                renderChart(data.chartData, data.initialCurrency);
+                renderTable(data.tableRows, data.initialCurrency);
+                calculateAndRenderScenarioSummaries(data.tableRows, data.initialCurrency);
+                resultsDiv.classList.remove('hidden');
+                displayCurrency = data.initialCurrency;
+                toggleCurrencyBtn.textContent = `View in ${displayCurrency === 'USD' ? 'INR' : 'USD'}`;
+                showMessage('Calculation complete!', 'green');
+            } else {
+                showMessage("Please fill out all the initial fields with valid numbers.", 'red');
+            }
         });
 
         // Function to render the chart
@@ -600,9 +599,18 @@
                                 }
                                 return formatCurrency(value, displayCurrency);
                             },
-                            // Set step size for INR currency to 10 Crore and force min to 0
-                            min: displayCurrency === 'INR' ? 0 : null,
-                            stepSize: displayCurrency === 'INR' ? 100000000 : null,
+                            afterBuildTicks: (axis) => {
+                                if (displayCurrency === 'INR') {
+                                    const ticks = [];
+                                    const max = axis.max;
+                                    const step = 100000000;
+                                    ticks.push(0);
+                                    for (let i = step; i < max + step; i += step) {
+                                        ticks.push(i);
+                                    }
+                                    axis.ticks = ticks.map(value => ({ value, label: value }));
+                                }
+                            }
                         }
                     }
                 },
@@ -681,89 +689,20 @@
 
         // Toggle currency
         toggleCurrencyBtn.addEventListener('click', async () => {
-            const initialPrincipal = parseFloat(document.getElementById('initialPrincipal').value);
-            const currentAge = parseInt(document.getElementById('currentAge').value);
-            const interestRate = parseFloat(document.getElementById('interestRate').value) / 100;
-            const compoundingFrequency = document.getElementById('compoundingFrequency').value;
-            const initialMonthlyAddon = parseFloat(document.getElementById('monthlyAddon').value);
-            const initialCurrency = document.getElementById('initialCurrency').value;
-
-            if (displayCurrency === 'USD') {
-                displayCurrency = 'INR';
-                toggleCurrencyBtn.textContent = 'View in USD';
-            } else {
-                displayCurrency = 'USD';
-                toggleCurrencyBtn.textContent = 'View in INR';
-            }
-            
-            // Re-run the calculation to update the display
-            let principal = initialPrincipal;
-            let currentMonthlyAddon = initialMonthlyAddon;
-            let scenarioIndex = 0;
-
-            const chartData = [];
-            const tableRows = [];
-            calculationData = [];
-
-            // Loop through each year until the constant projection age
-            for (let year = currentAge; year <= PROJECTION_AGE; year++) {
-                let interestEarnedThisYear = 0;
-                let contributionsThisYear = 0;
-                let yearlyPrincipalStart = principal;
-
-                if (scenarioIndex < scenarios.length && year >= scenarios[scenarioIndex].age) {
-                    const scenario = scenarios[scenarioIndex];
-                    if (scenario.currency !== initialCurrency) {
-                        currentMonthlyAddon = scenario.monthlyAddon / exchangeRates[scenario.currency] * exchangeRates[initialCurrency];
-                    } else {
-                        currentMonthlyAddon = scenario.monthlyAddon;
-                    }
-                    scenarioIndex++;
-                }
-
-                for (let month = 1; month <= 12; month++) {
-                    const monthlyRate = interestRate / 12;
-                    let interestThisMonth = 0;
-                    
-                    if (compoundingFrequency === 'monthly') {
-                        interestThisMonth = principal * monthlyRate;
-                        principal += interestThisMonth;
-                        interestEarnedThisYear += interestThisMonth;
-                    }
-
-                    principal += currentMonthlyAddon;
-                    contributionsThisYear += currentMonthlyAddon;
+            const data = await calculateData();
+            if (data) {
+                if (displayCurrency === 'USD') {
+                    displayCurrency = 'INR';
+                    toggleCurrencyBtn.textContent = 'View in USD';
+                } else {
+                    displayCurrency = 'USD';
+                    toggleCurrencyBtn.textContent = 'View in INR';
                 }
                 
-                if (compoundingFrequency === 'annually') {
-                    const annualInterest = yearlyPrincipalStart * interestRate;
-                    principal += annualInterest;
-                    interestEarnedThisYear = annualInterest;
-                }
-
-                chartData.push({
-                    x: year,
-                    y: principal,
-                });
-
-                tableRows.push({
-                    age: year,
-                    principalStart: yearlyPrincipalStart,
-                    interest: interestEarnedThisYear,
-                    contributions: contributionsThisYear,
-                    endingBalance: principal,
-                });
-
-                calculationData.push({
-                    age: year,
-                    endingBalance: principal,
-                    totalContributions: principal - interestEarnedThisYear
-                });
+                renderChart(data.chartData, data.initialCurrency);
+                renderTable(data.tableRows, data.initialCurrency);
+                calculateAndRenderScenarioSummaries(data.tableRows, data.initialCurrency);
             }
-
-            renderChart(chartData, initialCurrency);
-            renderTable(tableRows, initialCurrency);
-            calculateAndRenderScenarioSummaries(tableRows, initialCurrency);
         });
 
         // Gemini API calls
@@ -899,9 +838,11 @@
                         formattedInterest = formatCurrency(interest * conversionRate, displayCurrency);
                     }
                     
+                    const contributionLabel = scenario.monthlyAddon < 0 ? 'Total Withdrawn:' : 'Contributed:';
+
                     textToCopy += `Age: ${scenario.age}\n`;
                     textToCopy += `Accumulated: ${formattedAccumulated}\n`;
-                    textToCopy += `Contributed: ${formattedContributed}\n`;
+                    textToCopy += `${contributionLabel} ${formattedContributed}\n`;
                     textToCopy += `Interest Added: ${formattedInterest}\n`;
                     textToCopy += "-----------------------\n";
                 }
