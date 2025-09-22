@@ -173,21 +173,6 @@
             <button id="toggleCurrencyBtn" class="w-full sm:w-auto text-lg py-3 px-8 rounded-lg button-secondary">View in USD</button>
         </div>
         
-        <!-- LLM Features Section -->
-        <div class="space-y-4">
-            <h2 class="text-2xl font-medium text-gray-300 tracking-tight">AI-Powered Financial Insights</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <button id="generatePlanBtn" class="w-full md:w-auto text-sm py-3 px-6 rounded-lg button-primary">Generate Investment Plan ✨</button>
-            </div>
-            <div id="aiResponse" class="mt-4 p-4 card hidden">
-                <p id="aiResponseText" class="text-gray-400 text-sm leading-relaxed"></p>
-                <div id="loadingSpinner" class="hidden text-center mt-4">
-                    <div class="animate-spin inline-block w-6 h-6 border-3 border-blue-500 border-solid rounded-full border-t-transparent"></div>
-                    <p class="text-gray-500 mt-2 text-xs">Thinking...</p>
-                </div>
-            </div>
-        </div>
-
         <!-- Results Section -->
         <div id="results" class="hidden space-y-8">
             <h2 class="text-2xl font-medium text-gray-300 tracking-tight text-center">Your Investment Growth</h2>
@@ -239,9 +224,7 @@
     <script>
         // Use a global variable to store the chart instance
         let growthChart;
-        const apiKey = "";
-        const apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=" + apiKey;
-
+        
         // Function to format currency using the Intl.NumberFormat API
         function formatCurrency(amount, currency) {
             const locale = currency === 'INR' ? 'en-IN' : 'en-US';
@@ -292,10 +275,6 @@
         const addScenarioBtn = document.getElementById('addScenarioBtn');
         const scenariosContainer = document.getElementById('scenarios-container');
         const toggleCurrencyBtn = document.getElementById('toggleCurrencyBtn');
-        const generatePlanBtn = document.getElementById('generatePlanBtn');
-        const aiResponseDiv = document.getElementById('aiResponse');
-        const aiResponseText = document.getElementById('aiResponseText');
-        const loadingSpinner = document.getElementById('loadingSpinner');
         const scenarioSummaryResultsContainer = document.getElementById('scenario-summary-results-container');
         const downloadChartBtn = document.getElementById('downloadChartBtn');
         const copySummaryBtn = document.getElementById('copySummaryBtn');
@@ -703,61 +682,6 @@
                 renderTable(data.tableRows, data.initialCurrency);
                 calculateAndRenderScenarioSummaries(data.tableRows, data.initialCurrency);
             }
-        });
-
-        // Gemini API calls
-        async function callGeminiApi(prompt) {
-            aiResponseDiv.classList.remove('hidden');
-            loadingSpinner.classList.remove('hidden');
-            aiResponseText.textContent = '';
-
-            const payload = {
-                contents: [{ parts: [{ text: prompt }] }],
-            };
-            
-            let attempts = 0;
-            const maxAttempts = 5;
-            let delay = 1000;
-
-            while (attempts < maxAttempts) {
-                try {
-                    const response = await fetch(apiUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-
-                    if (response.status === 429) {
-                        attempts++;
-                        await new Promise(res => setTimeout(res, delay));
-                        delay *= 2;
-                        continue;
-                    }
-                    
-                    const result = await response.json();
-                    loadingSpinner.classList.add('hidden');
-                    return result?.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't generate a response.";
-                } catch (error) {
-                    loadingSpinner.classList.add('hidden');
-                    console.error("API call failed:", error);
-                    return "Sorry, something went wrong with the API call.";
-                }
-            }
-            
-            loadingSpinner.classList.add('hidden');
-            return "Failed to get a response after several attempts.";
-        }
-
-        generatePlanBtn.addEventListener('click', async () => {
-            const currentAge = document.getElementById('currentAge').value;
-            const initialPrincipal = document.getElementById('initialPrincipal').value;
-            const interestRate = document.getElementById('interestRate').value;
-            const monthlyAddon = document.getElementById('monthlyAddon').value;
-
-            const prompt = `Act as a financial advisor. Based on the following parameters: current age ${currentAge}, initial principal of ${initialPrincipal}, annual interest rate of ${interestRate}%, and monthly contributions of ${monthlyAddon}, provide a brief, high-level investment strategy. Focus on general advice and asset allocation (e.g., risk tolerance, diversifying), not specific stock recommendations. The response should be a single, concise paragraph.`;
-            
-            const response = await callGeminiApi(prompt);
-            aiResponseText.textContent = response;
         });
 
         // Download chart as PNG
